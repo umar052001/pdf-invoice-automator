@@ -1,7 +1,6 @@
-// preload.js
 const { contextBridge, ipcRenderer } = require('electron');
 
-// Expose a secure API to the renderer process (your index.html)
+// Expose a secure API to the renderer process (index.html)
 contextBridge.exposeInMainWorld('electron', {
     // Function to get the dynamic port from the main process
     getFastApiPort: () => ipcRenderer.invoke('get-fastapi-port'),
