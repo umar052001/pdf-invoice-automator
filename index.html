@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Invoice Automator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 font-sans">
+  <div class="container mx-auto p-4">
+    <!-- Header -->
+    <header class="flex justify-between items-center mb-4">
+      <h1 class="text-2xl font-bold">PDF Invoice Automator</h1>
+      <div id="backend-status" class="px-4 py-2 rounded text-white bg-gray-500">Checking...</div>
+    </header>
+
+    <!-- Configuration Panel -->
+    <section class="bg-white p-4 rounded shadow mb-4">
+      <h2 class="text-xl font-semibold mb-2">Configuration</h2>
+      <div class="flex items-center mb-2">
+        <label for="folder-path" class="mr-2">Folder to Watch:</label>
+        <input id="folder-path" type="text" class="border p-2 flex-grow" placeholder="/path/to/folder">
+        <button id="browse-folder" class="ml-2 bg-blue-500 text-white px-4 py-2 rounded">Browse</button>
+      </div>
+      <div class="flex items-center mb-2">
+        <label for="output-sink" class="mr-2">Output Sink (e.g., Google Sheet URL):</label>
+        <input id="output-sink" type="text" class="border p-2 flex-grow" placeholder="https://sheets.google.com/...">
+      </div>
+      <div class="flex space-x-2">
+        <button id="start-watching" class="bg-green-500 text-white px-4 py-2 rounded">Start Watching</button>
+        <button id="stop-watching" class="bg-red-500 text-white px-4 py-2 rounded" disabled>Stop Watching</button>
+      </div>
+    </section>
+
+    <!-- Dashboard Panel -->
+    <section class="bg-white p-4 rounded shadow mb-4">
+      <h2 class="text-xl font-semibold mb-2">Dashboard</h2>
+      <div class="grid grid-cols-3 gap-4">
+        <div class="text-center">
+          <p class="text-lg font-bold" id="files-processed">0</p>
+          <p>Files Processed</p>
+        </div>
+        <div class="text-center">
+          <p class="text-lg font-bold" id="errors">0</p>
+          <p>Errors</p>
+        </div>
+        <div class="text-center">
+          <p class="text-lg font-bold" id="uptime">00:00:00</p>
+          <p>Uptime</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Live Activity Log -->
+    <section class="bg-white p-4 rounded shadow">
+      <h2 class="text-xl font-semibold mb-2">Activity Log</h2>
+      <div id="log-area" class="h-40 overflow-y-scroll border p-2 bg-gray-50"></div>
+    </section>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:8000';
+
+    let isWatching = false;
+    let uptimeInterval = null;
+    let pollInterval = null;
+    let startTime = null;
+    let lastLogId = 0; // To fetch only new logs
+
+    // Helper to format uptime
+    function formatUptime(seconds) {
+      const h = Math.floor(seconds / 3600).toString().padStart(2, '0');
+      const m = Math.floor((seconds % 3600) / 60).toString().padStart(2, '0');
+      const s = (seconds % 60).toString().padStart(2, '0');
+      return `${h}:${m}:${s}`;
+    }
+
+    // Check backend health every 5 seconds
+    function checkHealth() {
+      fetch(`${API_BASE}/health`)
+        .then(res => res.json())
+        .then(data => {
+          const statusEl = document.getElementById('backend-status');
+          statusEl.textContent = data.status === 'ok' ? 'Online' : 'Offline';
+          statusEl.classList.toggle('bg-green-500', data.status === 'ok');
+          statusEl.classList.toggle('bg-red-500', data.status !== 'ok');
+        })
+        .catch(() => {
+          const statusEl = document.getElementById('backend-status');
+          statusEl.textContent = 'Offline';
+          statusEl.classList.add('bg-red-500');
+        });
+    }
+    setInterval(checkHealth, 5000);
+    checkHealth();
+
+    // Browse button
+    document.getElementById('browse-folder').addEventListener('click', async () => {
+      console.log('Browse button clicked');
+      try {
+        const folderPath = await window.electronAPI.selectFolder();
+        console.log('Selected folder:', folderPath);
+        if (folderPath) {
+          document.getElementById('folder-path').value = folderPath;
+        } else {
+          console.log('Folder selection canceled');
+        }
+      } catch (err) {
+        console.error('Error selecting folder:', err);
+        alert('Failed to open folder picker: ' + err.message);
+      }
+    });
+
+    // Start watching
+    document.getElementById('start-watching').addEventListener('click', async () => {
+      console.log('Start Watching button clicked');
+      const folderPath = document.getElementById('folder-path').value;
+      const sheetUrl = document.getElementById('output-sink').value;
+      if (!folderPath) {
+        console.error('No folder path provided');
+        return alert('Please select a folder');
+      }
+      try {
+        console.log('Sending POST to /start-watching with folder:', folderPath);
+        const response = await fetch(`${API_BASE}/start-watching`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ folder_path: folderPath, sheet_url: sheetUrl })
+        });
+        const data = await response.json();
+        console.log('Response from /start-watching:', data);
+        if (response.status >= 400) {
+          console.error('Error from backend:', data.detail);
+          alert(`Error: ${data.detail || 'Failed to start watching'}`);
+        } else if (data.status === 'success') {
+          isWatching = true;
+          startTime = Date.now();
+          document.getElementById('start-watching').disabled = true;
+          document.getElementById('stop-watching').disabled = false;
+          uptimeInterval = setInterval(() => {
+            const seconds = Math.floor((Date.now() - startTime) / 1000);
+            document.getElementById('uptime').textContent = formatUptime(seconds);
+          }, 1000);
+          startPolling();
+          console.log('Started watching successfully');
+        } else {
+          console.error('Unexpected response:', data);
+          alert(data.message || 'Unknown error');
+        }
+      } catch (err) {
+        console.error('Fetch error:', err);
+        alert('Error starting watcher: ' + err.message);
+      }
+    });
+
+    // Stop watching
+    document.getElementById('stop-watching').addEventListener('click', async () => {
+      console.log('Stop Watching button clicked');
+      try {
+        console.log('Sending POST to /stop-watching');
+        const response = await fetch(`${API_BASE}/stop-watching`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await response.json();
+        console.log('Response from /stop-watching:', data);
+        if (response.status >= 400) {
+          console.error('Error from backend:', data.detail);
+          alert(`Error: ${data.detail || 'Failed to stop watching'}`);
+        } else if (data.status === 'success') {
+          isWatching = false;
+          document.getElementById('start-watching').disabled = false;
+          document.getElementById('stop-watching').disabled = true;
+          clearInterval(uptimeInterval);
+          clearInterval(pollInterval);
+          document.getElementById('uptime').textContent = '00:00:00';
+          console.log('Stopped watching successfully');
+        } else {
+          console.error('Unexpected response:', data);
+          alert(data.message || 'Unknown error');
+        }
+      } catch (err) {
+        console.error('Fetch error:', err);
+        alert('Error stopping watcher: ' + err.message);
+      }
+    });
+
+    // Polling for status (every 3 seconds when active)
+    function startPolling() {
+      pollInterval = setInterval(() => {
+        if (!isWatching) return;
+        fetch(`${API_BASE}/status`)
+          .then(res => res.json())
+          .then(data => {
+            document.getElementById('files-processed').textContent = data.stats.files_processed;
+            document.getElementById('errors').textContent = data.stats.errors;
+            // Append new logs
+            const logArea = document.getElementById('log-area');
+            data.logs.filter(log => log.id > lastLogId).forEach(log => {
+              const p = document.createElement('p');
+              p.textContent = `[${log.timestamp}] ${log.message}`;
+              logArea.appendChild(p);
+              lastLogId = log.id;
+            });
+            logArea.scrollTop = logArea.scrollHeight;
+          })
+          .catch(err => console.error('Polling error:', err));
+      }, 3000);
+    }
+  </script>
+</body>
+</html>
