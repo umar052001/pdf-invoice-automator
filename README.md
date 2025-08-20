@@ -1,11 +1,12 @@
 
 # PDF Invoice Automator
-<p align="center">
-  <img src="data/image.png" alt="PDF Invoice Automator" width="1000"/>
-</p>
 
 A cross-platform desktop application built with **Electron** and **Python** that automates the extraction of data from PDF invoices.  
 The tool monitors a specified folder, processes new PDFs using text extraction and OCR, parses key information, and saves the data to a **Google Sheet** in real-time.
+
+<p align="center">
+  <img src="data/image.png" alt="PDF Invoice Automator" width="1000"/>
+</p>
 
 ---
 
@@ -131,4 +132,5 @@ The distributable app (e.g., `PDF Invoice Automator-1.0.0.AppImage` for Linux) w
 
 This project is licensed under the **MIT License**.
 See the [LICENSE](./LICENSE) file for details.
+
 
