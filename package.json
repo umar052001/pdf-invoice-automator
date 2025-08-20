@@ -1,11 +1,38 @@
 {
   "name": "pdf-invoice-automator",
   "version": "1.0.0",
+  "description": "An automated tool to extract data from PDF invoices.",
   "main": "main.js",
   "scripts": {
-    "start": "electron ."
+    "start": "electron .",
+    "build": "electron-builder"
   },
   "devDependencies": {
-    "electron": "^latest"
+    "electron": "^31.0.1",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.example.pdfautomator",
+    "productName": "PDF Invoice Automator",
+    "files": [
+      "main.js",
+      "index.html",
+      "preload.js"
+    ],
+    "extraResources": [
+      {
+        "from": "./backend",
+        "to": "backend"
+      }
+    ],
+    "linux": {
+      "target": "AppImage"
+    },
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "dependencies": {
+    "axios": "^1.11.0"
   }
 }
