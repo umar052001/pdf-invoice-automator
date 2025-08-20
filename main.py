@@ -1,4 +1,3 @@
-# main.py
 import time
 import threading
 import os
@@ -55,7 +54,6 @@ class AppState:
             if len(self.logs) > 100:
                 self.logs.pop(0)
 
-# --- FIX: Instantiate the state object AFTER the class is defined ---
 state = AppState()
 
 # --- 4. Google Sheets Integration ---
